@@ -55,7 +55,7 @@ class Trainer:
 
 
     def train(self) -> None:
-        """Train model."""
+        """Train model by iterating over training batches."""
         for it, batch in enumerate(self.train_loader):
             if it > self.config.max_iter:
                 break

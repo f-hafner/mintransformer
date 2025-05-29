@@ -14,7 +14,17 @@ def load_data(
         input_path: Path,
         block_size: int,
     ) -> tuple[Dataset, Dataset, int, Callable]:
-    """Load dataset."""
+    """Load dataset.
+
+    Args:
+        input_path (Path): path to the data.
+        block_size (int): Context length to consider in a sequence.
+
+    Returns:
+        A tuple of train dataset, test dataset, vocabulary size, and
+        function to decode integers (useful for generating new sequences.)
+
+    """
     data_dict, vocab_size, decode_fct = read_and_prepare_data(
             input_path=input_path, block_size=block_size)
 
@@ -27,7 +37,19 @@ def load_data(
 def read_and_prepare_data(
         input_path: Path,
         block_size: int) -> tuple[dict[str, torch.Tensor], int, Callable[[list[int]], str]]:
-    """Load data."""
+    """Load data from file and prepare for training.
+
+    Read data from file, create mapping from characters to integers.
+    Splits into train and test, and reshape into (n_batches, block_size).
+
+    Args:
+        input_path (Path): path to the data.
+        block_size (int): Context length to consider in a sequence.
+
+    Returns:
+        A tuple consistent of a dict with train and test Xs and Ys, the vocabulary
+        size, and the decode function.
+    """
     # wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
     with input_path.open(encoding="utf-8") as f:
         text = f.read()

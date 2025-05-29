@@ -7,13 +7,13 @@ from torch.nn import functional
 
 
 class MultiHeadAttention(nn.Module):
-    """multiple heads of self-attention in parallel."""
+    """Multiple heads of self-attention in parallel."""
     def __init__(self, num_heads: int, head_size: int, n_embd: int, block_size: int):
         super().__init__()
         self.heads = nn.ModuleList(
                 [Head(head_size, n_embd, block_size) for _ in range(num_heads)],
         )
-        self.proj = nn.Linear(n_embd, n_embd) # TODO: where does this projection come from?
+        self.proj = nn.Linear(n_embd, n_embd) # I think this is standard linear layer after attn head
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -24,7 +24,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    """a simple linear layer followed by a non-linearity."""
+    """A simple linear layer followed by a non-linearity."""
     def __init__(self, n_embd: int):
         super().__init__()
         self.net = nn.Sequential( # paper, section 3.3: feedforward layers has 4x the dimension of the embeddings
@@ -59,7 +59,7 @@ class Block(nn.Module):
 
 
 class Head(nn.Module):
-    """one head of self-attention."""
+    """One head of self-attention."""
 
     def __init__(self, head_size: int, n_embd: int, block_size: int):
         super().__init__()
@@ -102,12 +102,12 @@ class BigramLanguageModel(nn.Module):
 
     def forward(
             self,
-            idx: torch.Tensor,
+            sources: torch.Tensor,
             targets: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Run forward pass."""
-        batch_size, n_targets = idx.shape # B, T
+        batch_size, n_targets = sources.shape # B, T
 
-        tok_emb = self.token_embedding_table(idx) # (B, T, n_emb)
+        tok_emb = self.token_embedding_table(sources) # (B, T, n_emb)
         pos_emb = self.position_embedding_table(torch.arange(n_targets, device=self.device)) # (T, n_emb)
         x = tok_emb + pos_emb # (B, T, n_emb)
         x = self.blocks(x)
