@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Callable
 from pathlib import Path
+from typing import Callable
 import torch
 
 
@@ -31,16 +31,11 @@ def load_data(
     n = int(0.9*len(data)) # first 90% will be train, rest val
     train_data = data[:n]
     val_data = data[n:]
-    out_dict = {
-        "train_data": train_data,
-        "val_data": val_data}
-    return out_dict, vocab_size, decode
+    data_dict = {
+        "train": train_data,
+        "val": val_data}
+    return data_dict, vocab_size, decode
 
-#def get_batch(
-#        block_size: int,
-#        batch_size: int,
-#        device: str,
-#        split: str = "train") -> tuple[torch.Tensor, torch.Tensor]:
 
 def get_batch(
         data: torch.Tensor,
@@ -50,8 +45,6 @@ def get_batch(
         ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a batch from data."""
     # generate a small batch of data of inputs x and targets y
-    #train_data, val_data = load_data() # TODO: do not load each time
-    #data = train_data if split == "train" else val_data
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([data[i:i+block_size] for i in ix])
     y = torch.stack([data[i+1:i+block_size+1] for i in ix])
