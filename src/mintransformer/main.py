@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,9 +10,11 @@ from .dataloading import get_batch
 from .dataloading import load_data
 from .models.bigram import BigramLanguageModel
 
+logger = logging.getLogger(__name__)
+
 batch_size = 32 # how many independent sequences will we process in parallel?
 block_size = 8 # what is the maximum context length for predictions?
-max_iters = 5000
+max_iters = 1000
 eval_interval = 300
 learning_rate = 1e-3
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,7 +54,8 @@ def run_experiment(input_path: Path) -> None:
         # every once in a while evaluate the loss on train and val sets
         if iteration % eval_interval == 0:
             losses = estimate_loss(model, data_dict)
-            print(f"step {iteration}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            msg = f"step {iteration}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+            logger.info(msg)
         # sample a batch of data
         xb, yb = get_batch(data_dict["train"], block_size=block_size, batch_size=batch_size, device=device)
         # evaluate the loss
@@ -61,5 +65,5 @@ def run_experiment(input_path: Path) -> None:
         optimizer.step()
     # generate from the model
     context = torch.zeros((1, 1), dtype=torch.long, device=device)
-    print(decode_fct(m.generate(context, max_new_tokens=500)[0].tolist()))
+    logger.info(decode_fct(m.generate(context, max_new_tokens=500)[0].tolist()))
 
