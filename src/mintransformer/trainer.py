@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class Trainer:
 
     def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
         step_type = "Train" if train else "Test"
-        for it, batch in enumerate(dataloader):
+        for it, batch in tqdm(enumerate(dataloader)):
             source, targets = batch
             loss = self._run_batch(source, targets, train=train)
             if it % 100 == 0:

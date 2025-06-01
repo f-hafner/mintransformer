@@ -27,7 +27,8 @@ dependencies = [
   "torch",
   "jupyter",
   "matplotlib",
-  "ipykernel"
+  "ipykernel",
+  "tqdm"
 ]
 description = "DDP for transformer models"
 keywords = ["pytorch"," transformer"," distributed-training"]
