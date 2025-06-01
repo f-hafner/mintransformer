@@ -1,14 +1,11 @@
 from __future__ import annotations
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
 import torch
 from .dataloading import load_data
 from .models.bigram import BigramLanguageModel
 from .trainer import Trainer
 from .trainer import TrainerConfig
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +25,9 @@ def main(input_path: Path) -> None:
             iter_per_epoch=1000,
             batch_size=32,
             data_loader_workers=1,
-            save_every=0,
-            grad_norm_clip=0.5)
+            save_every=1,
+            grad_norm_clip=0.5,
+            snapshot_path=Path("snapshots/"))
 
     train_dataset, test_dataset, vocab_size, _ = load_data(input_path, block_size)
 
