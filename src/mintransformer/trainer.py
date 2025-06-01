@@ -23,6 +23,7 @@ class TrainerConfig:
     data_loader_workers: int
     grad_norm_clip: float
     save_every: int
+    world_size: int
     snapshot_path: Path = Path("./")
 
 @dataclass
@@ -52,18 +53,24 @@ class Trainer:
         self.test_loader = self._prepare_dataloader(test_dataset)
         # other
         self.optimizer = optimizer
-        if model.device == "cuda":
-            self.model = DistributedDataParallel(model, device_ids=[self.rank_id])
+        if self.config.world_size > 1:
+            if model.device == "cuda":
+                self.model = DistributedDataParallel(model, device_ids=[self.rank_id])
+            else:
+                self.model = DistributedDataParallel(model, device_ids=None)
         else:
-            self.model = DistributedDataParallel(model, device_ids=None)
+            self.model = model
 
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
-        return DataLoader(dataset,
-                          batch_size=self.config.batch_size,
-                          sampler=DistributedSampler(dataset),
-                          shuffle=False,
-                          )
+        dataloader = DataLoader(dataset, batch_size=self.config.batch_size)
+        if self.config.world_size > 1:
+            dataloader.sampler = DistributedSampler(dataset)
+            dataloader.shuffle = False
+        else:
+            dataloader.shuffle = True
+        return dataloader
+
 
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:

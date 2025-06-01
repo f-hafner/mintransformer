@@ -21,9 +21,11 @@ torch.manual_seed(1337)
 
 def main(rank: int, world_size: int, input_path: Path) -> None:
     """Set up and train model."""
+    if world_size > 1:
+        backend = "nccl" if device == "cuda" else "gloo"
+        ddp_setup(rank, world_size, backend=backend)
+
     # TODO: some are unused, also put all params into one location
-    backend = "nccl" if device == "cuda" else "gloo"
-    ddp_setup(rank, world_size, backend=backend)
     trainer_cfg = TrainerConfig(
             max_epochs=3,
             iter_per_epoch=1000,
@@ -31,6 +33,7 @@ def main(rank: int, world_size: int, input_path: Path) -> None:
             data_loader_workers=1,
             save_every=1,
             grad_norm_clip=0.5, # unused atm
+            world_size=world_size,
             snapshot_path=Path("snapshots/"))
 
     train_dataset, test_dataset, vocab_size, _ = load_data(input_path, block_size)
@@ -45,7 +48,8 @@ def main(rank: int, world_size: int, input_path: Path) -> None:
 
     trainer = Trainer(trainer_cfg, train_dataset, test_dataset, model, optimizer, rank)
     trainer.train()
-    destroy_process_group()
+    if world_size > 1:
+        destroy_process_group()
 
 
 
