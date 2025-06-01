@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrainerConfig:
     """Basic parameters for trainer."""
-    max_iter: int
+    max_epochs: int
+    iter_per_epoch: int
     batch_size: int
     data_loader_workers: int
     grad_norm_clip: float
     save_every: int
-    eval_interval: int
     snapshot_path: str = ""
 
 class Trainer:
@@ -32,7 +32,7 @@ class Trainer:
         self.config = trainer_config
         # Data
         self.train_loader = self._prepare_dataloader(train_dataset)
-        self.test_loader = iter(self._prepare_dataloader(test_dataset)) # TODO: clean up
+        self.test_loader = self._prepare_dataloader(test_dataset)
         # other
         self.model = model
         self.optimizer = optimizer
@@ -54,19 +54,23 @@ class Trainer:
         return loss.item()
 
 
+    def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
+        step_type = "Train" if train else "Test"
+        for it, batch in enumerate(dataloader):
+            source, targets = batch
+            loss = self._run_batch(source, targets, train=train)
+            if it % 100 == 0:
+                msg = f"Epoch {epoch} | Iter {it} | {step_type} Loss {loss:.5f}"
+                logger.info(msg)
+
+
+
     def train(self) -> None:
         """Train model by iterating over training batches."""
-        for it, batch in enumerate(self.train_loader):
-            if it > self.config.max_iter:
-                break
-
-            source, targets = batch
-            train_loss = self._run_batch(source, targets, train=True)
-            if it % self.config.eval_interval == 0:
-                test_source, test_target = next(self.test_loader)
-                test_loss = self._run_batch(test_source, test_target, train=False)
-                msg = f"Step {it}, train loss: {train_loss}, test loss: {test_loss}"
-                logger.info(msg)
+        for epoch in range(self.config.max_epochs):
+            self._run_epoch(epoch, self.train_loader, train=True)
+            if self.test_loader:
+                self._run_epoch(epoch, self.test_loader, train=False)
 
 
 

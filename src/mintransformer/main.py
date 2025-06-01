@@ -24,10 +24,10 @@ def main(input_path: Path) -> None:
     """Set up and train model."""
     # TODO: some are unused, also put all params into one location
     trainer_cfg = TrainerConfig(
-            max_iter=1000,
+            max_epochs=3,
+            iter_per_epoch=1000,
             batch_size=32,
             data_loader_workers=1,
-            eval_interval=300,
             save_every=0,
             grad_norm_clip=0.5)
 
