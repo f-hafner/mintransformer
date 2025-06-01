@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import torch
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -33,25 +35,35 @@ class Snapshot:
 
 class Trainer:
     """Class to train models."""
-    def __init__(
+    def __init__( # noqa: PLR0913 - too many arguments
             self,
             trainer_config: TrainerConfig,
             train_dataset: Dataset,
             test_dataset: Dataset,
             model: torch.nn.Module,
             optimizer: torch.optim.Optimizer,
+            rank_id: int,
             ):
         self.config = trainer_config
+        # DDP
+        self.rank_id = rank_id
         # Data
         self.train_loader = self._prepare_dataloader(train_dataset)
         self.test_loader = self._prepare_dataloader(test_dataset)
         # other
-        self.model = model
         self.optimizer = optimizer
+        if model.device == "cuda":
+            self.model = DistributedDataParallel(model, device_ids=[self.rank_id])
+        else:
+            self.model = DistributedDataParallel(model, device_ids=None)
 
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
-        return DataLoader(dataset, batch_size=self.config.batch_size)
+        return DataLoader(dataset,
+                          batch_size=self.config.batch_size,
+                          sampler=DistributedSampler(dataset),
+                          shuffle=False,
+                          )
 
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:
@@ -68,11 +80,19 @@ class Trainer:
 
     def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
         step_type = "Train" if train else "Test"
+        losses = []
         for it, batch in tqdm(enumerate(dataloader)):
             source, targets = batch
             loss = self._run_batch(source, targets, train=train)
-            if it % 100 == 0:
-                logger.info("Epoch %d | Iter %d | %s Loss %.5f", epoch, it, step_type, loss)
+            if not train:
+                losses.append(loss)
+
+            if train and it % 100 == 0:
+                logger.info("Epoch %d | rank %d | Iter %d | %s Loss %.5f", epoch, self.rank_id, it, step_type, loss)
+
+        if not train:
+            avg_loss = sum(losses) / len(losses)
+            logger.info("Epoch %d | rank %d | %s Loss %.5f", epoch, self.rank_id, step_type, avg_loss)
 
 
     def _save_snapshot(self, epoch: int) -> None:
@@ -95,7 +115,7 @@ class Trainer:
         for epoch in range(self.config.max_epochs):
             self._run_epoch(epoch, self.train_loader, train=True)
 
-            if epoch % self.config.save_every == 0:
+            if self.rank_id == 0 and epoch % self.config.save_every == 0:
                 self._save_snapshot(epoch)
 
             if self.test_loader:
