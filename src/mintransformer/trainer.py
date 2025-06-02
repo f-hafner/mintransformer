@@ -66,12 +66,13 @@ class Trainer:
             self.model = model
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
-        dataloader = DataLoader(dataset, batch_size=self.config.batch_size)
         if self.config.world_size > 1:
-            dataloader.sampler = DistributedSampler(dataset)
-            dataloader.shuffle = False
+            dataloader = DataLoader(
+                dataset, batch_size=self.config.batch_size, sampler=DistributedSampler(dataset), shuffle=False
+            )
         else:
-            dataloader.shuffle = True
+            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True)
+
         return dataloader
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:
