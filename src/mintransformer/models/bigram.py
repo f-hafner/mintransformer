@@ -1,9 +1,22 @@
 """Based on bigram model in zero-to-hero."""
 
 from __future__ import annotations
+import logging
+from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.nn import functional
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BigramModelConfig:
+    """Container for bigram model configuration."""
+
+    vocab_size: int
+    n_embd: int
+    block_size: int
 
 
 class MultiHeadAttention(nn.Module):
@@ -85,20 +98,19 @@ class Head(nn.Module):
 class BigramLanguageModel(nn.Module):
     """Super simple bigram model."""
 
-    def __init__(self, vocab_size: int, n_embd: int, block_size: int, device: str):
+    def __init__(self, cfg: BigramModelConfig):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
-        self.block_size = block_size
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding_table = nn.Embedding(block_size, n_embd)
+        self.cfg = cfg
+        self.token_embedding_table = nn.Embedding(cfg.vocab_size, cfg.n_embd)
+        self.position_embedding_table = nn.Embedding(cfg.block_size, cfg.n_embd)
         self.blocks = nn.Sequential(
-            Block(n_embd, n_head=4, block_size=block_size),
-            Block(n_embd, n_head=4, block_size=block_size),
-            Block(n_embd, n_head=4, block_size=block_size),
-            nn.LayerNorm(n_embd),
+            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
+            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
+            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
+            nn.LayerNorm(cfg.n_embd),
         )
-        self.lm_head = nn.Linear(n_embd, vocab_size)
-        self.device = device
+        self.lm_head = nn.Linear(cfg.n_embd, cfg.vocab_size)
 
     def forward(
         self,
@@ -106,10 +118,16 @@ class BigramLanguageModel(nn.Module):
         targets: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Run forward pass."""
+        logger.debug("Source device: %s", sources.device)
+        logger.debug("Targets device: %s", targets.device)
         batch_size, n_targets = sources.shape  # B, T
 
         tok_emb = self.token_embedding_table(sources)  # (B, T, n_emb)
-        pos_emb = self.position_embedding_table(torch.arange(n_targets, device=self.device))  # (T, n_emb)
+        pos_emb = self.position_embedding_table(
+            torch.arange(n_targets, device=sources.device)
+        )  # (T, n_emb) x = tok_emb + pos_emb  # (B, T, n_emb)
+        logger.debug("pos_emb device: %s", pos_emb.device)
+
         x = tok_emb + pos_emb  # (B, T, n_emb)
         x = self.blocks(x)
         # note broadcasting: (B, T, n_emb) + (T, n_emb); the latter gets broadcast to (B, T, n_emb)

@@ -1,0 +1,17 @@
+world_size: 2
+data_config:
+  block_size: 8
+  train_split: 0.9
+  input_file: "data/names.txt"
+model_config: # TODO: add params for n heads etc
+  n_embd: 32
+trainer_config:
+  max_epochs: 2
+  iter_per_epoch: 400,
+  batch_size: 32
+  data_loader_workers: 1
+  save_every: 1
+  grad_norm_clip: 0.5 # unused atm
+  snapshot_path: "snapshots/bigram.ckpt"
+optimizer_config:
+  learning_rate: 0.0003

@@ -25,7 +25,11 @@ class TrainerConfig:
     grad_norm_clip: float
     save_every: int
     world_size: int
-    snapshot_path: Path = Path("./")
+    snapshot_path: Path
+
+    def __post_init__(self):
+        if isinstance(self.snapshot_path, str):
+            self.snapshot_path = Path(self.snapshot_path)
 
 
 @dataclass
@@ -52,29 +56,68 @@ class Trainer:
         self.config = trainer_config
         # DDP
         self.rank_id = rank_id
-        # Data
-        self.train_loader = self._prepare_dataloader(train_dataset)
-        self.test_loader = self._prepare_dataloader(test_dataset)
-        # other
+        # initialize train states
         self.optimizer = optimizer
-        if self.config.world_size > 1:
-            if model.device == "cuda":
-                self.model = DistributedDataParallel(model, device_ids=[self.rank_id])
-            else:
-                self.model = DistributedDataParallel(model, device_ids=None)
+
+        if self.has_cuda:
+            self.model = model.to(self.rank_id)
         else:
             self.model = model
 
-    def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
-        dataloader = DataLoader(dataset, batch_size=self.config.batch_size)
         if self.config.world_size > 1:
-            dataloader.sampler = DistributedSampler(dataset)
-            dataloader.shuffle = False
+            if self.has_cuda:
+                logger.debug("Putting model to %d", self.rank_id)
+                self.model = DistributedDataParallel(self.model, device_ids=[self.rank_id])
+            else:
+                self.model = DistributedDataParallel(self.model, device_ids=None)
+        # Data
+        self.train_loader = self._prepare_dataloader(train_dataset)
+        self.test_loader = self._prepare_dataloader(test_dataset)
+
+        logger.debug(
+            "Worker %d initiated; is_head is %s, is_distributed is %s", self.rank_id, self.is_head, self.is_distributed
+        )
+
+    @property
+    def has_cuda(self) -> bool:
+        """Check if cuda is available."""
+        return torch.cuda.is_available()
+
+    @property
+    def is_distributed(self) -> bool:
+        """Check of model is wrapped by DDP."""
+        return isinstance(self.model, DistributedDataParallel)
+
+    @property
+    def is_head(self) -> bool:
+        """Check if current process is the head process."""
+        return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
+
+    def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
+        if self.config.world_size > 1:
+            dataloader = DataLoader(
+                dataset,
+                batch_size=self.config.batch_size,
+                sampler=DistributedSampler(dataset),
+                shuffle=False,
+                pin_memory=self.has_cuda,
+            )
         else:
-            dataloader.shuffle = True
+            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True, pin_memory=self.has_cuda)
+
         return dataloader
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:
+        if self.has_cuda:
+            # DDP-wrapped model has device attribute, but plain torch model does not
+            model_device = "cuda:0" if not hasattr(self.model, "device") else self.model.device
+            logger.debug(
+                "Worker %s, Devices (model, source, targets): %s, %s, %s",
+                self.rank_id,
+                model_device,
+                source.device,
+                targets.device,
+            )
         with torch.set_grad_enabled(train):
             _, loss = self.model(source, targets)
 
@@ -87,9 +130,16 @@ class Trainer:
 
     def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
         step_type = "Train" if train else "Test"
+        if train and self.is_distributed:
+            dataloader.sampler.set_epoch(epoch)
+
         losses = []
         for it, batch in tqdm(enumerate(dataloader)):
             source, targets = batch
+            if self.has_cuda:
+                logger.debug("Putting data to %d", self.rank_id)
+                source = source.to(self.rank_id)
+                targets = targets.to(self.rank_id)
             loss = self._run_batch(source, targets, train=train)
             if not train:
                 losses.append(loss)
@@ -111,15 +161,15 @@ class Trainer:
             finished_epoch=epoch,
         )
         snapshot = asdict(snapshot)
-        torch.save(snapshot, Path(self.config.snapshot_path / f"epoch_{epoch}.ckpt"))
-        logger.info("Snapshot saved at epoch %s", epoch)
+        torch.save(snapshot, self.config.snapshot_path)
+        logger.info("rank: %d | Snapshot saved at epoch %s", self.rank_id, epoch)
 
     def train(self) -> None:
         """Train model by iterating over training batches."""
         for epoch in range(self.config.max_epochs):
             self._run_epoch(epoch, self.train_loader, train=True)
 
-            if self.rank_id == 0 and epoch % self.config.save_every == 0:
+            if self.is_head and epoch % self.config.save_every == 0:
                 self._save_snapshot(epoch)
 
             if self.test_loader:
