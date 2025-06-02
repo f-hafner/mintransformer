@@ -56,9 +56,6 @@ class Trainer:
         self.config = trainer_config
         # DDP
         self.rank_id = rank_id
-        # Data
-        self.train_loader = self._prepare_dataloader(train_dataset)
-        self.test_loader = self._prepare_dataloader(test_dataset)
         # other
         self.optimizer = optimizer
         if self.config.world_size > 1:
@@ -68,6 +65,9 @@ class Trainer:
                 self.model = DistributedDataParallel(model, device_ids=None)
         else:
             self.model = model
+        # Data
+        self.train_loader = self._prepare_dataloader(train_dataset)
+        self.test_loader = self._prepare_dataloader(test_dataset)
 
         logger.debug(
             "Worker %d initiated; is_head is %s, is_distributed is %s", self.rank_id, self.is_head, self.is_distributed
@@ -84,12 +84,17 @@ class Trainer:
         return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
+        pin_memory = self.model.device == "cuda"
         if self.config.world_size > 1:
             dataloader = DataLoader(
-                dataset, batch_size=self.config.batch_size, sampler=DistributedSampler(dataset), shuffle=False
+                dataset,
+                batch_size=self.config.batch_size,
+                sampler=DistributedSampler(dataset),
+                shuffle=False,
+                pin_memory=pin_memory,
             )
         else:
-            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True)
+            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True, pin_memory=pin_memory)
 
         return dataloader
 

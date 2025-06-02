@@ -29,16 +29,16 @@ def main(rank: int, cfg: DictConfig, world_size: int) -> None:
         ddp_setup(rank, world_size, backend=backend)
 
     trainer_cfg = TrainerConfig(world_size=world_size, **cfg["trainer_config"])
-
     train_dataset, test_dataset, vocab_size, _ = load_data(data_config)
 
     model_config = BigramModelConfig(**cfg["model_config"], block_size=data_config.block_size, vocab_size=vocab_size)
-
     model = BigramLanguageModel(model_config)
     model = model.to(model.device)  # important for GPU
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.optimizer_config.learning_rate)
 
     trainer = Trainer(trainer_cfg, train_dataset, test_dataset, model, optimizer, rank)
     trainer.train()
+
     if world_size > 1:
         destroy_process_group()

@@ -1,4 +1,4 @@
-world_size: 1
+world_size: 3
 data_config:
   block_size: 8
   train_split: 0.9
@@ -7,7 +7,7 @@ model_config: # TODO: add params for n heads etc
   n_embd: 32
 trainer_config:
   max_epochs: 2
-  iter_per_epoch: 1000,
+  iter_per_epoch: 400,
   batch_size: 32
   data_loader_workers: 1
   save_every: 1

@@ -30,6 +30,9 @@ class DataConfig:
 def load_data(cfg: DataConfig) -> tuple[Dataset, Dataset, int, Callable]:
     """Load dataset.
 
+    Args:
+        cfg (DataConfig): configuration for data.
+
     Returns:
         A tuple of train dataset, test dataset, vocabulary size, and
         function to decode integers (useful for generating new sequences.)
@@ -43,11 +46,16 @@ def load_data(cfg: DataConfig) -> tuple[Dataset, Dataset, int, Callable]:
     return train_dataset, test_dataset, vocab_size, decode_fct
 
 
-def read_and_prepare_data(cfg: DataConfig) -> tuple[dict[str, torch.Tensor], int, Callable[[list[int]], str]]:
+def read_and_prepare_data(
+    cfg: DataConfig,
+) -> tuple[dict[str, torch.Tensor], int, Callable[[list[int]], str]]:
     """Load data from file and prepare for training.
 
     Read data from file, create mapping from characters to integers.
     Splits into train and test, and reshape into (n_batches, block_size).
+
+    Args:
+        cfg (DataConfig): configuration for data.
 
     Returns:
         A tuple consistent of a dict with train and test Xs and Ys, the vocabulary
