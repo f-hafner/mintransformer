@@ -33,7 +33,6 @@ def main(rank: int, cfg: DictConfig, world_size: int) -> None:
 
     model_config = BigramModelConfig(**cfg["model_config"], block_size=data_config.block_size, vocab_size=vocab_size)
     model = BigramLanguageModel(model_config)
-    model = model.to(model.device)  # important for GPU
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.optimizer_config.learning_rate)
 

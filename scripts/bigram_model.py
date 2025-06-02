@@ -27,7 +27,7 @@ if __name__ == "__main__":
     cfg = load_cfg("scripts/bigram_cfg.yaml")
     world_size = cfg.world_size
     if world_size == 1:
-        main(cfg=cfg, rank=1, world_size=world_size)
+        main(cfg=cfg, rank=0, world_size=world_size)
     else:
         torch.set_num_interop_threads(4)
         spawn(main, args=(cfg, world_size), nprocs=world_size)

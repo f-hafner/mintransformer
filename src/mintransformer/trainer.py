@@ -56,15 +56,20 @@ class Trainer:
         self.config = trainer_config
         # DDP
         self.rank_id = rank_id
-        # other
+        # initialize train states
         self.optimizer = optimizer
-        if self.config.world_size > 1:
-            if model.device == "cuda":
-                self.model = DistributedDataParallel(model, device_ids=[self.rank_id])
-            else:
-                self.model = DistributedDataParallel(model, device_ids=None)
+
+        if self.has_cuda:
+            self.model = model.to(self.rank_id)
         else:
             self.model = model
+
+        if self.config.world_size > 1:
+            if self.has_cuda:
+                logger.debug("Putting model to %d", self.rank_id)
+                self.model = DistributedDataParallel(self.model, device_ids=[self.rank_id])
+            else:
+                self.model = DistributedDataParallel(self.model, device_ids=None)
         # Data
         self.train_loader = self._prepare_dataloader(train_dataset)
         self.test_loader = self._prepare_dataloader(test_dataset)
@@ -72,6 +77,11 @@ class Trainer:
         logger.debug(
             "Worker %d initiated; is_head is %s, is_distributed is %s", self.rank_id, self.is_head, self.is_distributed
         )
+
+    @property
+    def has_cuda(self) -> bool:
+        """Check if cuda is available."""
+        return torch.cuda.is_available()
 
     @property
     def is_distributed(self) -> bool:
@@ -84,21 +94,30 @@ class Trainer:
         return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
-        pin_memory = self.model.device == "cuda"
         if self.config.world_size > 1:
             dataloader = DataLoader(
                 dataset,
                 batch_size=self.config.batch_size,
                 sampler=DistributedSampler(dataset),
                 shuffle=False,
-                pin_memory=pin_memory,
+                pin_memory=self.has_cuda,
             )
         else:
-            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True, pin_memory=pin_memory)
+            dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True, pin_memory=self.has_cuda)
 
         return dataloader
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:
+        if self.has_cuda:
+            # DDP-wrapped model has device attribute, but plain torch model does not
+            model_device = "cuda:0" if not hasattr(self.model, "device") else self.model.device
+            logger.debug(
+                "Worker %s, Devices (model, source, targets): %s, %s, %s",
+                self.rank_id,
+                model_device,
+                source.device,
+                targets.device,
+            )
         with torch.set_grad_enabled(train):
             _, loss = self.model(source, targets)
 
@@ -117,6 +136,10 @@ class Trainer:
         losses = []
         for it, batch in tqdm(enumerate(dataloader)):
             source, targets = batch
+            if self.has_cuda:
+                logger.debug("Putting data to %d", self.rank_id)
+                source = source.to(self.rank_id)
+                targets = targets.to(self.rank_id)
             loss = self._run_batch(source, targets, train=train)
             if not train:
                 losses.append(loss)

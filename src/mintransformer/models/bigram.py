@@ -1,10 +1,13 @@
 """Based on bigram model in zero-to-hero."""
 
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.nn import functional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -108,7 +111,6 @@ class BigramLanguageModel(nn.Module):
             nn.LayerNorm(cfg.n_embd),
         )
         self.lm_head = nn.Linear(cfg.n_embd, cfg.vocab_size)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def forward(
         self,
@@ -116,10 +118,16 @@ class BigramLanguageModel(nn.Module):
         targets: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Run forward pass."""
+        logger.debug("Source device: %s", sources.device)
+        logger.debug("Targets device: %s", targets.device)
         batch_size, n_targets = sources.shape  # B, T
 
         tok_emb = self.token_embedding_table(sources)  # (B, T, n_emb)
-        pos_emb = self.position_embedding_table(torch.arange(n_targets, device=self.device))  # (T, n_emb)
+        pos_emb = self.position_embedding_table(
+            torch.arange(n_targets, device=sources.device)
+        )  # (T, n_emb) x = tok_emb + pos_emb  # (B, T, n_emb)
+        logger.debug("pos_emb device: %s", pos_emb.device)
+
         x = tok_emb + pos_emb  # (B, T, n_emb)
         x = self.blocks(x)
         # note broadcasting: (B, T, n_emb) + (T, n_emb); the latter gets broadcast to (B, T, n_emb)

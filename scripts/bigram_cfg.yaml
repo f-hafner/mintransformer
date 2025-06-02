@@ -1,4 +1,4 @@
-world_size: 3
+world_size: 2
 data_config:
   block_size: 8
   train_split: 0.9
