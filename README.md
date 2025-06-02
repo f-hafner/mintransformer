@@ -15,7 +15,9 @@
 | Build                              | [![build](https://github.com/f-hafner/mintransformer/actions/workflows/build.yml/badge.svg)](https://github.com/f-hafner/mintransformer/actions/workflows/build.yml) |
 | Link checker              | [![link-check](https://github.com/f-hafner/mintransformer/actions/workflows/link-check.yml/badge.svg)](https://github.com/f-hafner/mintransformer/actions/workflows/link-check.yml) |## How to use mintransformer
 
-DDP for transformer models
+DDP for transformer models. Based on:
+- [minGPT](https://github.com/karpathy/minGPT)
+- [minGPT-ddp](https://github.com/subramen/minGPT-ddp)
 
 The project setup is documented in [project_setup.md](project_setup.md). Feel free to remove this document (and/or the link to this document) if you don't need it.
 
