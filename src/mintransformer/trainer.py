@@ -69,17 +69,19 @@ class Trainer:
         else:
             self.model = model
 
-        logger.debug("Worker %d initiated; is_head is %s, is_ddp is %s", self.rank_id, self.is_head, self.is_ddp)
+        logger.debug(
+            "Worker %d initiated; is_head is %s, is_distributed is %s", self.rank_id, self.is_head, self.is_distributed
+        )
 
     @property
-    def is_ddp(self) -> bool:
+    def is_distributed(self) -> bool:
         """Check of model is wrapped by DDP."""
         return isinstance(self.model, DistributedDataParallel)
 
     @property
     def is_head(self) -> bool:
         """Check if current process is the head process."""
-        return (self.is_ddp and self.rank_id == 0) or (not self.is_ddp)
+        return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
         if self.config.world_size > 1:
@@ -104,6 +106,9 @@ class Trainer:
 
     def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
         step_type = "Train" if train else "Test"
+        if train and self.is_distributed:
+            dataloader.sampler.set_epoch(epoch)
+
         losses = []
         for it, batch in tqdm(enumerate(dataloader)):
             source, targets = batch
