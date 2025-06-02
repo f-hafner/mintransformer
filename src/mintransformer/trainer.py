@@ -25,7 +25,11 @@ class TrainerConfig:
     grad_norm_clip: float
     save_every: int
     world_size: int
-    snapshot_path: Path = Path("./")
+    snapshot_path: Path
+
+    def __post_init__(self):
+        if isinstance(self.snapshot_path, str):
+            self.snapshot_path = Path(self.snapshot_path)
 
 
 @dataclass
@@ -64,6 +68,18 @@ class Trainer:
                 self.model = DistributedDataParallel(model, device_ids=None)
         else:
             self.model = model
+
+        logger.debug("Worker %d initiated; is_head is %s, is_ddp is %s", self.rank_id, self.is_head, self.is_ddp)
+
+    @property
+    def is_ddp(self) -> bool:
+        """Check of model is wrapped by DDP."""
+        return isinstance(self.model, DistributedDataParallel)
+
+    @property
+    def is_head(self) -> bool:
+        """Check if current process is the head process."""
+        return (self.is_ddp and self.rank_id == 0) or (not self.is_ddp)
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
         if self.config.world_size > 1:
@@ -112,15 +128,15 @@ class Trainer:
             finished_epoch=epoch,
         )
         snapshot = asdict(snapshot)
-        torch.save(snapshot, Path(self.config.snapshot_path / f"epoch_{epoch}.ckpt"))
-        logger.info("Snapshot saved at epoch %s", epoch)
+        torch.save(snapshot, self.config.snapshot_path)
+        logger.info("rank: %d | Snapshot saved at epoch %s", self.rank_id, epoch)
 
     def train(self) -> None:
         """Train model by iterating over training batches."""
         for epoch in range(self.config.max_epochs):
             self._run_epoch(epoch, self.train_loader, train=True)
 
-            if self.rank_id == 0 and epoch % self.config.save_every == 0:
+            if self.is_head and epoch % self.config.save_every == 0:
                 self._save_snapshot(epoch)
 
             if self.test_loader:
