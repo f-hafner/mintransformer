@@ -48,6 +48,7 @@ dev = [
     "ruff",
     "tox",
     "myst_parser",
+    "pre-commit"
 ]
 publishing = [
     "build",
@@ -127,7 +128,3 @@ filename = "src/mintransformer/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
-
-
-
-

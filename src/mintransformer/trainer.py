@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrainerConfig:
     """Basic parameters for trainer."""
+
     max_epochs: int
     iter_per_epoch: int
     batch_size: int
@@ -26,9 +27,11 @@ class TrainerConfig:
     world_size: int
     snapshot_path: Path = Path("./")
 
+
 @dataclass
 class Snapshot:
     """Snapshot for model and optimizer states."""
+
     model_state: dict[str, Any]
     optimizer_state: dict[str, Any]
     finished_epoch: int
@@ -36,15 +39,16 @@ class Snapshot:
 
 class Trainer:
     """Class to train models."""
-    def __init__( # noqa: PLR0913 - too many arguments
-            self,
-            trainer_config: TrainerConfig,
-            train_dataset: Dataset,
-            test_dataset: Dataset,
-            model: torch.nn.Module,
-            optimizer: torch.optim.Optimizer,
-            rank_id: int,
-            ):
+
+    def __init__(  # noqa: PLR0913 - too many arguments
+        self,
+        trainer_config: TrainerConfig,
+        train_dataset: Dataset,
+        test_dataset: Dataset,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        rank_id: int,
+    ):
         self.config = trainer_config
         # DDP
         self.rank_id = rank_id
@@ -61,7 +65,6 @@ class Trainer:
         else:
             self.model = model
 
-
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
         dataloader = DataLoader(dataset, batch_size=self.config.batch_size)
         if self.config.world_size > 1:
@@ -70,8 +73,6 @@ class Trainer:
         else:
             dataloader.shuffle = True
         return dataloader
-
-
 
     def _run_batch(self, source: torch.Tensor, targets: torch.Tensor, train: bool = True) -> float:
         with torch.set_grad_enabled(train):
@@ -83,7 +84,6 @@ class Trainer:
             self.optimizer.step()
 
         return loss.item()
-
 
     def _run_epoch(self, epoch: int, dataloader: DataLoader, train: bool = True) -> None:
         step_type = "Train" if train else "Test"
@@ -101,21 +101,18 @@ class Trainer:
             avg_loss = sum(losses) / len(losses)
             logger.info("Epoch %d | rank %d | %s Loss %.5f", epoch, self.rank_id, step_type, avg_loss)
 
-
     def _save_snapshot(self, epoch: int) -> None:
         model = self.model
         # If a model is wrapped by DDP, it does not have a "module" attribute
         raw_model = model.module if hasattr(model, "module") else model
         snapshot = Snapshot(
-                model_state=raw_model.state_dict(),
-                optimizer_state=self.optimizer.state_dict(),
-                finished_epoch=epoch,
+            model_state=raw_model.state_dict(),
+            optimizer_state=self.optimizer.state_dict(),
+            finished_epoch=epoch,
         )
         snapshot = asdict(snapshot)
         torch.save(snapshot, Path(self.config.snapshot_path / f"epoch_{epoch}.ckpt"))
         logger.info("Snapshot saved at epoch %s", epoch)
-
-
 
     def train(self) -> None:
         """Train model by iterating over training batches."""
@@ -127,10 +124,3 @@ class Trainer:
 
             if self.test_loader:
                 self._run_epoch(epoch, self.test_loader, train=False)
-
-
-
-
-
-
-

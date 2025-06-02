@@ -11,9 +11,9 @@ from torch.utils.data import TensorDataset
 
 
 def load_data(
-        input_path: Path,
-        block_size: int,
-    ) -> tuple[Dataset, Dataset, int, Callable]:
+    input_path: Path,
+    block_size: int,
+) -> tuple[Dataset, Dataset, int, Callable]:
     """Load dataset.
 
     Args:
@@ -25,8 +25,7 @@ def load_data(
         function to decode integers (useful for generating new sequences.)
 
     """
-    data_dict, vocab_size, decode_fct = read_and_prepare_data(
-            input_path=input_path, block_size=block_size)
+    data_dict, vocab_size, decode_fct = read_and_prepare_data(input_path=input_path, block_size=block_size)
 
     train_dataset = TensorDataset(data_dict["x_train"], data_dict["y_train"])
     test_dataset = TensorDataset(data_dict["x_test"], data_dict["y_test"])
@@ -35,8 +34,9 @@ def load_data(
 
 
 def read_and_prepare_data(
-        input_path: Path,
-        block_size: int) -> tuple[dict[str, torch.Tensor], int, Callable[[list[int]], str]]:
+    input_path: Path,
+    block_size: int,
+) -> tuple[dict[str, torch.Tensor], int, Callable[[list[int]], str]]:
     """Load data from file and prepare for training.
 
     Read data from file, create mapping from characters to integers.
@@ -58,7 +58,7 @@ def read_and_prepare_data(
     vocab_size = len(chars)
 
     # create a mapping from characters to integers
-    stoi = { ch:i for i,ch in enumerate(chars) }
+    stoi = {ch: i for i, ch in enumerate(chars)}
     itos = dict(enumerate(chars))
 
     def encode(s: str) -> list[int]:
@@ -71,7 +71,7 @@ def read_and_prepare_data(
 
     # Train and test splits
     data = torch.tensor(encode(text), dtype=torch.long)
-    n = int(0.9*len(data)) # first 90% will be train, rest val
+    n = int(0.9 * len(data))  # first 90% will be train, rest val
     train_data = data[:n]
     test_data = data[n:]
 
@@ -82,10 +82,10 @@ def read_and_prepare_data(
     y_test = test_data[1:]
 
     data_dict = {
-      "x_train": x_train,
-      "y_train": y_train,
-      "x_test": x_test,
-      "y_test": y_test,
+        "x_train": x_train,
+        "y_train": y_train,
+        "x_test": x_test,
+        "y_test": y_test,
     }
     for k, v in data_dict.items():
         data_dict[k] = reshape_to_batches(v, block_size)
