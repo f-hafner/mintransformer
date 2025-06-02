@@ -93,6 +93,26 @@ def read_and_prepare_data(
     return data_dict, vocab_size, decode
 
 
+def create_splits(data: torch.Tensor, train_frac: float = 0.9) -> dict[str, torch.Tensor]:
+    """Split data set into train/test, create labels for training."""
+    n = int(train_frac * len(data))
+    train_data = data[:n]
+    test_data = data[n:]
+
+    x_train = train_data[:-1]
+    y_train = train_data[1:]
+
+    x_test = test_data[:-1]
+    y_test = test_data[1:]
+
+    return {
+        "x_train": x_train,
+        "y_train": y_train,
+        "x_test": x_test,
+        "y_test": y_test,
+    }
+
+
 def reshape_to_batches(data: torch.Tensor, block_size: int) -> torch.Tensor:
     """Reshape an array from 1d to 2d of shape (n_batches, block_size)."""
     n = len(data) - len(data) % block_size
