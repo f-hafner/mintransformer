@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import os
 from typing import TYPE_CHECKING
 import torch
 from torch.distributed import destroy_process_group
@@ -19,16 +20,21 @@ logger = logging.getLogger(__name__)
 torch.manual_seed(1337)
 
 
-def main(rank: int, cfg: DictConfig, world_size: int) -> None:
+def main(cfg: DictConfig) -> None:
     """Set up and train model."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    logger.debug("World size: %d", local_world_size)
+    logger.debug("Local rank: %d", local_rank)
+
     data_config = DataConfig(**cfg["data_config"])
 
-    if world_size > 1:
+    if local_world_size > 1:
         backend = "nccl" if device == "cuda" else "gloo"
-        ddp_setup(rank, world_size, backend=backend)
+        ddp_setup(backend=backend)
 
-    trainer_cfg = TrainerConfig(world_size=world_size, **cfg["trainer_config"])
+    trainer_cfg = TrainerConfig(world_size=local_world_size, **cfg["trainer_config"])
     train_dataset, test_dataset, vocab_size, _ = load_data(data_config)
 
     model_config = BigramModelConfig(**cfg["model_config"], block_size=data_config.block_size, vocab_size=vocab_size)
@@ -36,8 +42,8 @@ def main(rank: int, cfg: DictConfig, world_size: int) -> None:
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.optimizer_config.learning_rate)
 
-    trainer = Trainer(trainer_cfg, train_dataset, test_dataset, model, optimizer, rank)
+    trainer = Trainer(trainer_cfg, train_dataset, test_dataset, model, optimizer)
     trainer.train()
 
-    if world_size > 1:
+    if local_world_size > 1:
         destroy_process_group()
