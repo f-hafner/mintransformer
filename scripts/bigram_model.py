@@ -23,5 +23,4 @@ def load_cfg(cfg_path: str | Path) -> DictConfig:
 
 if __name__ == "__main__":
     cfg = load_cfg("scripts/bigram_cfg.yaml")
-    world_size = cfg.world_size
     main(cfg=cfg)

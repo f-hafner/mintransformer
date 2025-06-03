@@ -1,3 +1,5 @@
+"""Trainer for single-node, multi-gpu training with DDP."""
+
 from __future__ import annotations
 import logging
 import os
@@ -31,11 +33,6 @@ class TrainerConfig:
     def __post_init__(self):
         if isinstance(self.snapshot_path, str):
             self.snapshot_path = Path(self.snapshot_path)
-
-        parent_path = self.snapshot_path.parent
-        if not parent_path.exists():
-            logger.info("Creating snapshot directory at %s", parent_path)
-            parent_path.mkdir(parents=True)
 
 
 @dataclass
@@ -73,6 +70,7 @@ class Trainer:
         self._load_snapshot()
 
         if self.config.world_size > 1:
+            logger.debug("Using DDP")
             if self.has_cuda:
                 logger.debug("Putting model to %d", self.rank_id)
                 self.model = DistributedDataParallel(self.model, device_ids=[self.rank_id])
@@ -99,14 +97,19 @@ class Trainer:
     @property
     def is_head(self) -> bool:
         """Check if current process is the head process."""
-        return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
+        local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
+        return (local_world_size > 1 and self.rank_id == 0) or local_world_size == 1
 
     def _load_snapshot(self) -> None:
         try:
             with self.config.snapshot_path as f:
                 snapshot_data = torch.load(f, map_location="cpu")
         except FileNotFoundError:
-            logger.info("Snapshot not found. Training from scratch.")
+            parent_path = self.config.snapshot_path.parent
+            if self.is_head and not parent_path.exists():
+                logger.info("Creating snapshot directory at %s/.", parent_path)
+                parent_path.mkdir(parents=True)
+            logger.info("Worker %d | Snapshot not found. Training from scratch.", self.rank_id)
             return
 
         snapshot = Snapshot(**snapshot_data)
@@ -122,8 +125,8 @@ class Trainer:
             epoch: current counter of epochs.
 
         Note that running epochs are 0-based indexed at the start
-        of each epoch, but upon saving
-        (in this function), epochs run is incremented by 1 since
+        of each epoch, but upon saving (in this function),
+        the counter for "epochs run" is incremented by 1 since
         the current epoch is finished.
         """
         model = self.model
