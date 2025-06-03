@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import os
 from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,11 @@ class TrainerConfig:
         if isinstance(self.snapshot_path, str):
             self.snapshot_path = Path(self.snapshot_path)
 
+        parent_path = self.snapshot_path.parent
+        if not parent_path.exists():
+            logger.info("Creating snapshot directory at %s", parent_path)
+            parent_path.mkdir(parents=True)
+
 
 @dataclass
 class Snapshot:
@@ -44,25 +50,27 @@ class Snapshot:
 class Trainer:
     """Class to train models."""
 
-    def __init__(  # noqa: PLR0913 - too many arguments
+    def __init__(
         self,
         trainer_config: TrainerConfig,
         train_dataset: Dataset,
         test_dataset: Dataset,
         model: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
-        rank_id: int,
     ):
         self.config = trainer_config
         # DDP
-        self.rank_id = rank_id
+        self.rank_id = int(os.environ["LOCAL_RANK"])
         # initialize train states
         self.optimizer = optimizer
+        self.epochs_run = 0
 
         if self.has_cuda:
             self.model = model.to(self.rank_id)
         else:
             self.model = model
+
+        self._load_snapshot()
 
         if self.config.world_size > 1:
             if self.has_cuda:
@@ -92,6 +100,43 @@ class Trainer:
     def is_head(self) -> bool:
         """Check if current process is the head process."""
         return (self.is_distributed and self.rank_id == 0) or (not self.is_distributed)
+
+    def _load_snapshot(self) -> None:
+        try:
+            with self.config.snapshot_path as f:
+                snapshot_data = torch.load(f, map_location="cpu")
+        except FileNotFoundError:
+            logger.info("Snapshot not found. Training from scratch.")
+            return
+
+        snapshot = Snapshot(**snapshot_data)
+        self.model.load_state_dict(snapshot.model_state)
+        self.epochs_run = snapshot.finished_epoch
+        self.optimizer.load_state_dict(snapshot.optimizer_state)
+        logger.info("Resuming training from snapshot at epoch %d", self.epochs_run)
+
+    def _save_snapshot(self, epoch: int) -> None:
+        """Save model snapshot.
+
+        Args:
+            epoch: current counter of epochs.
+
+        Note that running epochs are 0-based indexed at the start
+        of each epoch, but upon saving
+        (in this function), epochs run is incremented by 1 since
+        the current epoch is finished.
+        """
+        model = self.model
+        # If a model is wrapped by DDP, it does not have a "module" attribute
+        raw_model = model.module if hasattr(model, "module") else model
+        snapshot = Snapshot(
+            model_state=raw_model.state_dict(),
+            optimizer_state=self.optimizer.state_dict(),
+            finished_epoch=epoch + 1,
+        )
+        snapshot = asdict(snapshot)
+        torch.save(snapshot, self.config.snapshot_path)
+        logger.info("rank: %d | Snapshot saved at epoch %s", self.rank_id, epoch)
 
     def _prepare_dataloader(self, dataset: Dataset) -> DataLoader:
         if self.config.world_size > 1:
@@ -151,22 +196,9 @@ class Trainer:
             avg_loss = sum(losses) / len(losses)
             logger.info("Epoch %d | rank %d | %s Loss %.5f", epoch, self.rank_id, step_type, avg_loss)
 
-    def _save_snapshot(self, epoch: int) -> None:
-        model = self.model
-        # If a model is wrapped by DDP, it does not have a "module" attribute
-        raw_model = model.module if hasattr(model, "module") else model
-        snapshot = Snapshot(
-            model_state=raw_model.state_dict(),
-            optimizer_state=self.optimizer.state_dict(),
-            finished_epoch=epoch,
-        )
-        snapshot = asdict(snapshot)
-        torch.save(snapshot, self.config.snapshot_path)
-        logger.info("rank: %d | Snapshot saved at epoch %s", self.rank_id, epoch)
-
     def train(self) -> None:
         """Train model by iterating over training batches."""
-        for epoch in range(self.config.max_epochs):
+        for epoch in range(self.epochs_run, self.config.max_epochs):
             self._run_epoch(epoch, self.train_loader, train=True)
 
             if self.is_head and epoch % self.config.save_every == 0:

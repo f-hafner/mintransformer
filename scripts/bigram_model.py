@@ -1,10 +1,8 @@
 from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
-import torch
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
-from torch.multiprocessing.spawn import spawn
 from mintransformer.main import main
 
 if TYPE_CHECKING:
@@ -26,8 +24,4 @@ def load_cfg(cfg_path: str | Path) -> DictConfig:
 if __name__ == "__main__":
     cfg = load_cfg("scripts/bigram_cfg.yaml")
     world_size = cfg.world_size
-    if world_size == 1:
-        main(cfg=cfg, rank=0, world_size=world_size)
-    else:
-        torch.set_num_interop_threads(4)
-        spawn(main, args=(cfg, world_size), nprocs=world_size)
+    main(cfg=cfg)
