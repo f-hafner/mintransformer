@@ -17,6 +17,28 @@ class BigramModelConfig:
     vocab_size: int
     n_embd: int
     block_size: int
+    n_head: int
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if self.vocab_size <= 0:
+            msg = f"vocab_size must be positive, got {self.vocab_size}"
+            raise ValueError(msg)
+        if self.n_embd <= 0:
+            msg = f"n_embd must be positive, got {self.n_embd}"
+            raise ValueError(msg)
+        if self.block_size <= 0:
+            msg = f"block_size must be positive, got {self.block_size}"
+            raise ValueError(msg)
+        if self.n_head <= 0:
+            msg = f"n_head must be positive, got {self.n_head}"
+            raise ValueError(msg)
+        if self.n_head > self.n_embd:
+            msg = f"n_head ({self.n_head}) cannot exceed n_embd ({self.n_embd})"
+            raise ValueError(msg)
+        if self.n_embd % self.n_head != 0:
+            msg = f"n_embd ({self.n_embd}) must be divisible by n_head ({self.n_head})"
+            raise ValueError(msg)
 
 
 class MultiHeadAttention(nn.Module):
@@ -31,21 +53,22 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run forward pass."""
-        heads = [h(x) for h in self.heads]
-        out = torch.cat(heads, dim=-1)
+        heads = [h(x) for h in self.heads]  # each head has shape (B, T, head_size)
+        out = torch.cat(heads, dim=-1)  # (B, T, head_size * n_heads)
         return self.proj(out)
 
 
 class FeedForward(nn.Module):
     """A simple linear layer followed by a non-linearity."""
 
-    def __init__(self, n_embd: int):
+    def __init__(self, n_embd: int, n_head: int):
         super().__init__()
-        self.net = nn.Sequential(  # paper, section 3.3: feedforward layers has 4x the dimension of the embeddings
-            nn.Linear(n_embd, 4 * n_embd),
+        self.net = nn.Sequential(
+            # paper, section 3.3: feedforward layers has n_head times the dimension of the embeddings
+            nn.Linear(n_embd, n_head * n_embd),
             nn.ReLU(),
             # I understand here the projection is necessary because of the multiplication of channels (?)
-            nn.Linear(4 * n_embd, n_embd),
+            nn.Linear(n_head * n_embd, n_embd),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -60,7 +83,7 @@ class Block(nn.Module):
         super().__init__()
         head_size = n_embd // n_head
         self.sa_heads = MultiHeadAttention(n_head, head_size, n_embd, block_size)
-        self.ffwd = FeedForward(n_embd)
+        self.ffwd = FeedForward(n_embd, n_head)
         self.ln1 = nn.LayerNorm(n_embd)  # note: b/c LayerNorm has 2 trainable params, we need
         # separate instances each time we use it
         self.ln2 = nn.LayerNorm(n_embd)
@@ -83,16 +106,16 @@ class Head(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run forward pass."""
-        _, n_targets, n_classes = x.shape  # B, T, C
-        k = self.key(x)  # B, T, C
-        q = self.query(x)  # B, T, C
+        _, n_targets, emb_dim = x.shape  # B, T, C
+        k = self.key(x)  # B, T, head_size
+        q = self.query(x)  # B, T, head_size
         # compute attention scores
-        wei = q @ k.transpose(-2, -1) * (n_classes**-0.5)  # B, T, T
+        wei = q @ k.transpose(-2, -1) * (emb_dim**-0.5)  # B, T, T
         wei = wei.masked_fill(self.tril[:n_targets, :n_targets] == 0, float("-inf"))
         wei = functional.softmax(wei, dim=-1)  # B, T, T
 
-        v = self.value(x)  # B, T, C
-        return wei @ v  # (B, T, T) * (B, T, C) = B, T, C
+        v = self.value(x)  # B, T, head_size
+        return wei @ v  # (B, T, T) * (B, T, head_size) = B, T, head_size
 
 
 class BigramLanguageModel(nn.Module):
@@ -105,9 +128,9 @@ class BigramLanguageModel(nn.Module):
         self.token_embedding_table = nn.Embedding(cfg.vocab_size, cfg.n_embd)
         self.position_embedding_table = nn.Embedding(cfg.block_size, cfg.n_embd)
         self.blocks = nn.Sequential(
-            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
-            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
-            Block(cfg.n_embd, n_head=4, block_size=cfg.block_size),
+            Block(cfg.n_embd, n_head=cfg.n_head, block_size=cfg.block_size),
+            Block(cfg.n_embd, n_head=cfg.n_head, block_size=cfg.block_size),
+            Block(cfg.n_embd, n_head=cfg.n_head, block_size=cfg.block_size),
             nn.LayerNorm(cfg.n_embd),
         )
         self.lm_head = nn.Linear(cfg.n_embd, cfg.vocab_size)
@@ -119,7 +142,10 @@ class BigramLanguageModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Run forward pass."""
         logger.debug("Source device: %s", sources.device)
-        logger.debug("Targets device: %s", targets.device)
+        if isinstance(targets, torch.Tensor):
+            logger.debug("Targets device: %s", targets.device)
+        else:
+            logger.debug("Targets is None.")
         batch_size, n_targets = sources.shape  # B, T
 
         tok_emb = self.token_embedding_table(sources)  # (B, T, n_emb)

@@ -3,8 +3,9 @@ data_config:
   block_size: 8
   train_split: 0.9
   input_file: "data/names.txt"
-model_config: # TODO: add params for n heads etc
+model_config:
   n_embd: 32
+  n_head: 4
 trainer_config:
   max_epochs: 2
   iter_per_epoch: 400,
