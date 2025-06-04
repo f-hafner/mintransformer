@@ -4,35 +4,10 @@ from __future__ import annotations
 import logging
 import pyarrow as pa
 import torch
-from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
-
-
-def create_sample_data() -> tuple[list[list[int]], list[list[int]]]:
-    """Create sample integer sequence data for testing."""
-    # Example: simple sequences where y is x shifted by 1
-    x_sequences = [
-        [3, 5, 7, 8, 5, 10],
-        [1, 2, 3, 4, 5, 6],
-        [10, 9, 8, 7, 6, 5],
-        [2, 4, 6, 8, 10, 12],
-        [15, 14, 13, 12, 11, 10],
-        [20, 22, 24, 26, 28, 30],
-    ]
-
-    y_sequences = [
-        [5, 7, 8, 5, 10, 15],
-        [2, 3, 4, 5, 6, 7],
-        [9, 8, 7, 6, 5, 4],
-        [4, 6, 8, 10, 12, 14],
-        [14, 13, 12, 11, 10, 9],
-        [22, 24, 26, 28, 30, 32],
-    ]
-
-    return x_sequences, y_sequences
 
 
 def write_to_arrow_stream(data: dict[str, list[list[int]]], filename: str) -> None:
@@ -129,26 +104,3 @@ class CustomDataset(Dataset):
 
     def __len__(self):
         return len(self.samples)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    # Create data, save as arrow IPC file
-    x_seqs, y_seqs = create_sample_data()
-    data_dict = {"x": x_seqs, "y": y_seqs}
-
-    filename = "data/mydata.arrow"
-    write_to_arrow_stream(data=data_dict, filename=filename)
-
-    # Arrow dataset
-    dataset_kwargs = ArrowReader().read(filename=filename, in_memory=True)
-    arrow_dataset = ArrowDataset(**dataset_kwargs)
-    dataset = CustomDataset(arrow_dataset)
-
-    # Dataloader
-    # Note: each process will load (and memory-map) the data separately!
-    dataloader = DataLoader(dataset, batch_size=3)
-
-    myiter = iter(dataloader)
-    batch = next(myiter)
-    logger.info("First batch: %s", batch)
