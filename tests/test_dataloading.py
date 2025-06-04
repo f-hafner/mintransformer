@@ -1,16 +1,16 @@
 import torch
-from mintransformer.dataloading import create_splits
-from mintransformer.dataloading import reshape_to_batches
+from mintransformer.dataloading.utils import create_splits
+from mintransformer.dataloading.utils import reshape_to_blocks
 
 
-def test_reshape_to_batches():
-    """Test that reshape works with offset."""
+def test_reshape_to_blocks():
+    """Test that reshape works with offset at the end."""
     n_batches = 12
     block_size = 8
     offset = 3
     a = torch.randint(0, 400, (n_batches * block_size + offset,))
     expected = torch.reshape(a[:-offset], (n_batches, block_size))
-    output = reshape_to_batches(a, block_size)
+    output = reshape_to_blocks(a, block_size)
     assert torch.all(output == expected)
 
 

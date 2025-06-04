@@ -3,6 +3,8 @@ import logging
 from typing import TYPE_CHECKING
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
+from mintransformer.dataloading.utils import DataConfig
+from mintransformer.dataloading.utils import write_data_to_arrow
 from mintransformer.main import main
 
 if TYPE_CHECKING:
@@ -23,4 +25,6 @@ def load_cfg(cfg_path: str | Path) -> DictConfig:
 
 if __name__ == "__main__":
     cfg = load_cfg("scripts/bigram_cfg.yaml")
-    main(cfg=cfg)
+    data_config = DataConfig(**cfg["data_config"])
+    vocab_size, _ = write_data_to_arrow(data_config)
+    main(cfg=cfg, vocab_size=vocab_size)

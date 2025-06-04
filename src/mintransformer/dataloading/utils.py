@@ -2,9 +2,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+import numpy as np
 import torch
-from torch.utils.data import Dataset
-from torch.utils.data import TensorDataset
+from .datasets import ArrowDataset
+from .datasets import ArrowReader
+from .datasets import CustomDataset
+from .datasets import write_to_arrow_stream
 
 
 @dataclass
@@ -27,7 +30,7 @@ class DataConfig:
             self.input_file = Path(self.input_file)
 
 
-def load_data(cfg: DataConfig) -> tuple[Dataset, Dataset, int, Callable]:
+def write_data_to_arrow(cfg: DataConfig) -> tuple[int, Callable]:
     """Load dataset.
 
     Args:
@@ -39,11 +42,27 @@ def load_data(cfg: DataConfig) -> tuple[Dataset, Dataset, int, Callable]:
 
     """
     data_dict, vocab_size, decode_fct = read_and_prepare_data(cfg)
+    data_dict = {k: np.array(v) for k, v in data_dict.items()}
+    data_to_store = {}
+    for k, v in data_dict.items():
+        data_list = [x for x in v]  # noqa: C416 -- unnecessary list comp
+        data_to_store[k] = data_list
 
-    train_dataset = TensorDataset(data_dict["x_train"], data_dict["y_train"])
-    test_dataset = TensorDataset(data_dict["x_test"], data_dict["y_test"])
+    test_data = {k: v for k, v in data_to_store.items() if "test" in k}
+    train_data = {k: v for k, v in data_to_store.items() if "train" in k}
 
-    return train_dataset, test_dataset, vocab_size, decode_fct
+    write_to_arrow_stream(train_data, "data/names_train.arrow")
+    write_to_arrow_stream(test_data, "data/names_test.arrow")
+    return vocab_size, decode_fct
+
+
+def load_datasets() -> tuple[CustomDataset, CustomDataset]:
+    """Load mem-mapped data into CustomDatasets."""
+    datasets = {"train": "data/names_train.arrow", "test": "data/names_test.arrow"}
+    datasets = {k: ArrowReader().read(filename=v, in_memory=True) for k, v in datasets.items()}
+    datasets = {k: CustomDataset(ArrowDataset(**v)) for k, v in datasets.items()}
+
+    return datasets["train"], datasets["test"]
 
 
 def read_and_prepare_data(
@@ -99,7 +118,7 @@ def read_and_prepare_data(
         "y_test": y_test,
     }
     for k, v in data_dict.items():
-        data_dict[k] = reshape_to_batches(v, cfg.block_size)
+        data_dict[k] = reshape_to_blocks(v, cfg.block_size)
 
     return data_dict, vocab_size, decode
 
@@ -124,8 +143,8 @@ def create_splits(data: torch.Tensor, train_split: float = 0.9) -> dict[str, tor
     }
 
 
-def reshape_to_batches(data: torch.Tensor, block_size: int) -> torch.Tensor:
-    """Reshape an array from 1d to 2d of shape (n_batches, block_size)."""
+def reshape_to_blocks(data: torch.Tensor, block_size: int) -> torch.Tensor:
+    """Reshape an array from 1d to 2d of shape (n_samples, block_size)."""
     n = len(data) - len(data) % block_size
     data = data[:n]
     n_batches = int(len(data) / block_size)

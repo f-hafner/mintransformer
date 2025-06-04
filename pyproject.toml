@@ -29,7 +29,8 @@ dependencies = [
   "matplotlib",
   "ipykernel",
   "tqdm",
-  "omegaconf"
+  "omegaconf",
+  "pyarrow"
 ]
 description = "DDP for transformer models"
 keywords = ["pytorch"," transformer"," distributed-training"]
@@ -110,6 +111,7 @@ pydocstyle.convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # Tests can ignore a few extra rules
 "tests/**.py" = [
+    "ANN001", # Missing type annotation for function args
     "ANN201", # Missing return type annotation for public function
     "PT011",  # Missing `match` parameter in `pytest.raises()`
     "S101",   # Use of assert is detected
