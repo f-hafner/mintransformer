@@ -29,7 +29,8 @@ dependencies = [
   "matplotlib",
   "ipykernel",
   "tqdm",
-  "omegaconf"
+  "omegaconf",
+  "pyarrow"
 ]
 description = "DDP for transformer models"
 keywords = ["pytorch"," transformer"," distributed-training"]
