@@ -1,4 +1,4 @@
-setuptools
+setuptools>=64.0.0
 wheel
 setuptools-scm
 alabaster==1.0.0
